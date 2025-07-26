@@ -1,7 +1,7 @@
 # RAG-Based-Multimodal-Fake-News-Detection
 This repositiory is built for identifying Fake News from different modality like the images and text 
 # Dataset
-[-https://](https://www.cs.rice.edu/~vo9/visualnews/)
+You can access the dataset here which is used for training [here](https://www.cs.rice.edu/~vo9/visualnews/)
 # Environment Setup
 
 Back-end Flask Server
