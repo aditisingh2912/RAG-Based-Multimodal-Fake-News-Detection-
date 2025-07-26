@@ -7,4 +7,6 @@ You can access the dataset here which is used for training [here](https://www.cs
 Back-end Flask Server
 
 To install the required Python libraries for the backend, run the command:
- !pip install requiremnts.txt
+```bash
+pip install -r requirements.txt
+
