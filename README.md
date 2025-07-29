@@ -12,5 +12,5 @@ To install the required Python libraries for the backend, run the command:
  pip install -r requirements.txt
 ```
 # Project Status
-I am still working on this project so come at the project after a while  .You might see something amazing 
+I am still working on this project so come at the project after a while  .You might see something amazing , till then stay tuned 
 
