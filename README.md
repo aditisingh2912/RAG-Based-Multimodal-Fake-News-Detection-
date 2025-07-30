@@ -15,7 +15,7 @@ To install the required Python libraries for the backend, run the command:
 Right now I am working on preparing the inference pipeline for this project so come at the project after a while  .You might see something amazing , till then stay tuned .
 To still give you a glimpse on it , here is the task list for inference pipeline
 
-I have a pretrained open_source RED_DOT Model which you can acesss from [here](https://github.com/aditisingh2912/RAG-Based-Multimodal-Fake-News-Detection-/blob/main/Training%20Pipeline/models%20(1).py)REDDOT is an encoder only architecture .Traditionally have been trained on .My training pipeline uses the  Encoder_version = ViT/L14 . The base model was trained on VERITE dataset . 
+I have a pretrained open_source RED_DOT Model which you can acesss from [here](https://github.com/aditisingh2912/RAG-Based-Multimodal-Fake-News-Detection-/blob/main/Training%20Pipeline/models%20(1).py)REDDOT is an encoder only architecture .Traditionally have been trained on with encoder_version as ViT/L32 .My training pipeline uses the  Encoder_version = ViT/L14 . The base model was trained on VERITE dataset . 
 
 The tasks are listed as follows:-
 1. Load the pretrained RED_DOT model ,following parameters were used
