@@ -18,7 +18,7 @@ To still give you a glimpse on it , here is the task list for inference pipeline
 I have a pretrained open_source RED_DOT Model which you can acesss from [here](https://github.com/aditisingh2912/RAG-Based-Multimodal-Fake-News-Detection-/blob/main/Training%20Pipeline/models%20(1).py)REDDOT is an encoder only architecture .Traditionally have been trained on with encoder_version as ViT/L32 .My training pipeline uses the  Encoder_version = ViT/L14 . The base model was trained on VERITE dataset . 
 
 The tasks are listed as follows:-
-1. Load the pretrained RED_DOT model ,following parameters were used
+1. Load the pretrained RED_DOT model  using the provided checkpoints ,following parameters were used
    ```bash
    a.  emb_dim=768, #originally 512
    b.  tf_layers=4, 
