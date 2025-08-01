@@ -2,7 +2,34 @@
 This repositiory is built for identifying Fake News from different modality like the images and text 
 # Dataset
 You can access the dataset here which is used for training [here](https://github.com/stevejpapad/image-text-verification/tree/master/VERITE)
-# Environment Setup
+
+# Architecture 
+Hey all , I thought of putting a simple diagramatic flow of the architecture of Relevance Evidence Detection aka RED_DOT as I understand .Detailed explanation of the model along with base model definition can be found [here](https://github.com/stevejpapad/relevant-evidence-detection) along with the original paper .
+
+The REDDOT model consists of a two-stage architecture:
+
+## Transformer Encoder
+
+Comprised of 4 self-attention layers.
+
+Accepts input tokens of shape [seq_len, embed_dim], where embed_dim = 768.
+
+# # Token Classifier
+
+1. Operates on the output representation of the [CLS] token.
+
+2. Predicts a binary label (real/fake) for the input evidence.
+
+
+Here's a detailed explanation of how data flows through the REDDOT model during inference, with a focus on multimodal fusion, chunking, and transformer encoding for fake news detection.
+
+We have two modalities intially - text and image.
+After encoding we have image,text,fused embedding as [768,768,3840] in standard Pytorch standard of [batch_size,Seq_len,Embed_dimension]
+Now our REDDOT encoder can accept embeddings with dimension [768] so this is where i realised we  need a chunking strategy for passing any input through the encoder architecture which might look like [batch size, chhunks, embed_dim] ---> [5,768]
+Lets see what is actually happening when we are creating chunks . Instead of directly passing , now we are passing 5 sequential tokens for each batch sample, with Shape as [1,5,768]. Now the self attention is computed between all the 5 tokens for the given tensor in the transformer architecture. Also here each token_index comes with fusion embedding like concat_1, mul,add,sub and a prepended CLS token which is the contextual embedding. Output shape from transformer: [1, 6, 768]
+
+
+# Environment 
 
 Back-end Flask Server
 
