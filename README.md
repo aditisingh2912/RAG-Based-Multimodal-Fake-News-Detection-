@@ -10,9 +10,9 @@ The REDDOT model consists of a two-stage architecture:
 
 ## Transformer Encoder
 
-Comprised of 4 self-attention layers.
+1. Comprised of 4 self-attention layers.
 
-Accepts input tokens of shape [seq_len, embed_dim], where embed_dim = 768.
+2. Accepts input tokens of shape [seq_len, embed_dim], where embed_dim = 768.
 
 ## Token Classifier
 
