@@ -14,7 +14,7 @@ Comprised of 4 self-attention layers.
 
 Accepts input tokens of shape [seq_len, embed_dim], where embed_dim = 768.
 
-# # Token Classifier
+## Token Classifier
 
 1. Operates on the output representation of the [CLS] token.
 
