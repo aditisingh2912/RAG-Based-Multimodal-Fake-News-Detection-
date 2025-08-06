@@ -1,0 +1,174 @@
+# LOADING THE TRAINED MODEL
+#load_model.py
+#%%writefile /content/drive/MyDrive/Streamlit_implementation/load_model.py
+import os
+from google.colab import drive
+drive.mount('/content/drive')
+os.chdir('/content/drive/MyDrive/Assignment/src')
+
+import torch
+from models import RED_DOT
+#devic config
+device=torch.device('cuda'if torch.cuda.is_available() else 'cpu')
+#to instantiate model
+model=RED_DOT(
+        device,
+        emb_dim=768, #originally 512
+        tf_layers=4, # Changed from 1 to 4 based on error message
+        tf_head=8,
+        tf_dim=128,
+        activation="gelu",
+        dropout=0.1,
+        use_features=["images", "texts"],
+        pre_norm=True,
+        num_classes=1,
+        skip_tokens=0,
+        use_evidence=0,
+        use_neg_evidence=0,
+        model_version="baseline",
+        fuse_evidence=[False]
+    )
+
+# to load the checkpoint
+checkpoint_path="/content/drive/MyDrive/Assignment/checkpoints_pt/best_model.pt"
+state_dict=torch.load(checkpoint_path,map_location=device)
+model.load_state_dict(state_dict['model_state_dict'])
+model.eval()
+model.to(device)
+
+
+# general pipeline for preprocessing the text and image whenver new input is taken during inference
+
+#%%writefile /content/drive/MyDrive/Streamlit_implementation/preprocess_feat_extraction.py
+import torch
+from PIL import Image
+import os # Import os module
+#Feature Extraction Pipeline
+!pip install salesforce-lavis==1.0.2
+from lavis.models import load_model_and_preprocess
+
+# Modified preprocess function to accept device
+def preprocess(text_path, image_path, device):
+    model, vis_processors, txt_processors = load_model_and_preprocess(
+        name="clip_feature_extractor",    # Model family for CLIP feature extraction
+        model_type="ViT-L-14",                # Model variant, e.g. "base", "RN50", "ViT-L-14"
+        is_eval=True,                    # Set model to eval mode
+        device=device                    # Target device
+    )
+    # Load and preprocess image
+    if isinstance(image_path, str):
+        image = Image.open(image_path).convert("RGB")
+    else:
+        # Assuming 'images' input would be a PIL Image object if not a string path
+        image = image_path
+
+    image_tensor = vis_processors["eval"](image).unsqueeze(0).to(device)
+
+    # Preprocess text
+    # Need to handle if text is a file path or a string
+    if isinstance(text_path, str) and os.path.exists(text_path):
+        with open(text_path, 'r') as f:
+            text_content = f.read()
+    else:
+        text_content = text_path # Assuming text is already a string if not a file path
+
+    processed_text = txt_processors["eval"](text_content) # Use text_content
+
+    return model, image_tensor, processed_text, vis_processors, txt_processors # Return processors as well
+
+# test_preprocess.py
+
+
+if __name__ == "__main__":
+  # Define device for example usage
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+  # Example inputs
+  image_path = "/content/drive/MyDrive/Assignment/Test Data/sample1/Image.jpg"
+  text_path = "/content/drive/MyDrive/Assignment/Test Data/sample1/caption.txt"
+
+  # Run preprocessing, passing device
+  model, image_tensor, processed_text, vis_processors, txt_processors = preprocess(text_path, image_path, device)
+
+
+  # Print info
+  print("✅ Preprocessing complete.")
+  print(f"Image tensor shape: {image_tensor.shape} | dtype: {image_tensor.dtype}")
+  print(f"Processed text type: {type(processed_text)}")
+  # Check if model has parameters before accessing device
+  if list(model.parameters()):
+      print(f"Model device: {next(model.parameters()).device}")
+  else:
+      print("Model has no parameters.")
+
+
+#%%writefile /content/drive/MyDrive/Streamlit_implementation/extract_fuse_embeddings.py
+import torch
+import numpy as np # Import numpy for later use if needed by FAISS part
+
+def extract_embeddings(model, image_tensor, processed_text):
+    """
+    Extract CLIP embeddings for image and text using LAVIS model.
+    """
+    with torch.no_grad():
+        features = model.extract_features({
+            "image": image_tensor,
+            "text_input": [processed_text]
+        })
+        # Ensure embeddings are on CPU for numpy conversion if needed later
+        image_emb = features.image_embeds[0].cpu()
+        text_emb = features.text_embeds[0].cpu()
+    return image_emb, text_emb
+
+def fuse_embeddings(image_emb, text_emb, fusion_methods=["concat_1", "add", "sub", "mul"]):
+    """
+    Apply different fusion strategies to image and text embeddings.
+
+    Args:
+        image_emb (torch.Tensor): Image embedding tensor.
+        text_emb (torch.Tensor): Text embedding tensor.
+        fusion_methods (list): List of fusion methods to apply.
+
+    Returns:
+        torch.Tensor: Fused embedding tensor.
+    """
+    fused_parts = []
+
+    for method in fusion_methods:
+        if method == "concat_1":
+            fused_parts.append(torch.cat([image_emb, text_emb], dim=-1))
+        elif method == "add":
+            fused_parts.append(image_emb + text_emb)
+        elif method == "sub":
+            fused_parts.append(image_emb - text_emb)
+        elif method == "mul":
+            fused_parts.append(image_emb * text_emb)
+        else:
+            raise ValueError(f"Unsupported fusion method: {method}")
+
+    # Ensure all parts are on the same device before concatenating
+    # Since embeddings are already on CPU, this should be fine, but good practice
+    fused_embedding = torch.cat(fused_parts, dim=-1)
+    return fused_embedding
+
+# Testing and debugging section 
+if __name__ == "__main__":
+    # Define device for example usage
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Call preprocess with defined device
+    model, img_tensor, txt_proc, _, _ = preprocess("/content/drive/MyDrive/Assignment/Test Data/sample1/caption.txt", "/content/drive/MyDrive/Assignment/Test Data/sample1/Image.jpg", device)
+
+    img_emb, txt_emb = extract_embeddings(model, img_tensor, txt_proc)
+
+    fusion_methods = ["concat_1", "add", "sub", "mul"]  # can be adjusted
+    combined_emb = fuse_embeddings(img_emb, txt_emb, fusion_methods)
+
+    print(f"Image embedding shape: {img_emb.shape}")
+    print(f"Text embedding shape: {txt_emb.shape}")
+    print(f"Fused embedding shape ({'+'.join(fusion_methods)}): {combined_emb.shape}")
+
+# Chunking strategy to use 
+
+
+
