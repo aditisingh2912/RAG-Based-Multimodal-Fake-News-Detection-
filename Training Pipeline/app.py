@@ -1,5 +1,3 @@
-!pip install torch
-!pip install transformers
 import streamlit as st
 from PIL import Image
 import torch
