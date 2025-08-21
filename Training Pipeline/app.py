@@ -3,7 +3,7 @@ from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
-st.set_page_config(page_title="Fake or Real Detector", layout="centered")
+st.set_page_config(page_title="Fake News Detection app ", layout="centered")
 
 st.title("🕵️ Fake or Real Detector (Text + Image)")
 
