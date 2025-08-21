@@ -1,7 +1,6 @@
-
+Pillow
+numpy
 torch==2.8.0
 torchvision
-torchaudio
 transformers
-
-
+faiss-cpu
