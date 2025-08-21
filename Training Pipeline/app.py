@@ -82,26 +82,28 @@ index, kb_meta = build_faiss_index()
 def predict(text, image):
     start_time = time.time()
 
-    inputs = processor(text=[text], images=image, return_tensors="pt", padding=True)
-    with torch.no_grad():
-        text_emb = model.get_text_features(**inputs).cpu().numpy()
-        img_emb = model.get_image_features(**inputs).cpu().numpy()
+    # Get embeddings
+    text_inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(device)
+    text_emb = model.get_text_features(**text_inputs).cpu().detach().numpy()
+
+    image_inputs = processor(images=image, return_tensors="pt").to(device)
+    image_emb = model.get_image_features(**image_inputs).cpu().detach().numpy()
 
     # Similarity between text & image
-    sim = np.dot(text_emb, img_emb.T) / (np.linalg.norm(text_emb) * np.linalg.norm(img_emb))
-    sim_score = float(sim[0][0])
+    sim = cosine_similarity(text_emb, image_emb)[0][0]
 
-    # Retrieve evidence from KB
-    if index is not None:
-        D, I = index.search(text_emb, k=1)
-        evidence = kb_meta[I[0][0]]
-    else:
-        evidence = {"caption": "No KB available", "image_path": None, "gt": None}
+    # Retrieval from KB (text only for now)
+    D, I = index.search(text_emb.astype("float32"), k=3)
+    evidence = [kb_meta[i] for i in I[0]]
 
-    inference_time = time.time() - start_time
-    label = "Real" if sim_score > 0.5 else "Fake"
+    # Label decision
+    label = "Real" if sim > 0.5 else "Fake"
 
-    return label, sim_score, inference_time, evidence
+    end_time = time.time()
+    infer_time = end_time - start_time
+
+    return label, sim, infer_time, evidence
+
 
 # ---------------------------
 # Streamlit UI
