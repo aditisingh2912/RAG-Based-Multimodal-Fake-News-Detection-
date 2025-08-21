@@ -113,37 +113,68 @@ index, kb_items = build_kb_index(KB_DIR)
 # -----------------------
 # Predict function
 # -----------------------
-def predict(text, image):
-    start_time = time.time()
+def predict_pair(text, image, alpha=0.6, temperature=0.07, top_k=5, threshold=0.55):
+    start = time.time()
 
-    # Encode text
+    # ---- Encode text ----
     text_inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(device)
     with torch.no_grad():
-        text_emb = model.get_text_features(**text_inputs)
-    text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)   # normalize
-    text_emb = text_emb.cpu().numpy()
+        text_feat = model.get_text_features(**text_inputs)
+    text_feat = text_feat / text_feat.norm(dim=-1, keepdim=True)
+    text_np = text_feat.cpu().numpy().astype("float32")
 
-    # Encode image
+    # ---- Encode image ----
     image_inputs = processor(images=image, return_tensors="pt").to(device)
     with torch.no_grad():
-        image_emb = model.get_image_features(**image_inputs)
-    image_emb = image_emb / image_emb.norm(dim=-1, keepdim=True)   # normalize
-    image_emb = image_emb.cpu().numpy()
+        img_feat = model.get_image_features(**image_inputs)
+    img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
+    img_np = img_feat.cpu().numpy().astype("float32")
 
-    # Cosine similarity
-    sim_text_img = cosine_similarity(text_emb, image_emb)[0][0]
+    # ---- Pair similarity ----
+    pair_cos = float(cosine_similarity(text_np, img_np)[0][0])
+    # map cosine [-1,1] to [0,1]
+    pair_prob = (pair_cos + 1) / 2
 
-    # Retrieve top-3 evidence (based on caption similarity to text)
-    D, I = index.search(text_emb.astype("float32"), k=3)
-    evidence = [kb_meta[i] for i in I[0]]
+    # ---- Fuse embedding (for KB search) ----
+    fused = (text_np + img_np) / 2.0
+    fused = fused / (np.linalg.norm(fused, axis=1, keepdims=True) + 1e-12)
 
-    # Dynamic threshold for Real vs Fake
-    label = "Real" if sim_text_img >= 0.28 else "Fake"
+    # ---- Retrieve from KB ----
+    kb_sims, kb_ids = index.search(fused.astype("float32"), k=top_k)
+    kb_sims = kb_sims[0]
+    kb_ids = kb_ids[0]
 
-    end_time = time.time()
-    infer_time = round(end_time - start_time, 3)
+    # normalize KB sims into probabilities
+    kb_probs = softmax_1d(kb_sims, temperature=temperature)
+    kb_top_sim = float(kb_sims[0])
+    kb_top_prob = float(kb_probs[0])
 
-    return label, round(sim_text_img, 3), infer_time, evidence
+    evidence = []
+    for rank, (idx, sim, prob) in enumerate(zip(kb_ids, kb_sims, kb_probs), start=1):
+        if idx < 0 or idx >= len(kb_items):
+            continue
+        ev = dict(kb_items[idx])
+        ev["rank"] = rank
+        ev["cosine"] = float(sim)
+        ev["prob"] = float(prob)
+        evidence.append(ev)
+
+    # ---- Blend pair score & KB score ----
+    confidence = alpha * pair_prob + (1 - alpha) * kb_top_prob
+    label = "Real" if confidence >= threshold else "Fake"
+
+    infer_time = time.time() - start
+
+    return {
+        "label": label,
+        "confidence": confidence,
+        "pair_cos": pair_cos,
+        "pair_prob": pair_prob,
+        "kb_top_sim": kb_top_sim,
+        "kb_top_prob": kb_top_prob,
+        "evidence": evidence,
+        "infer_time": infer_time,
+    }
 
 # -----------------------
 # Streamlit UI
