@@ -84,17 +84,18 @@ index, kb_meta = build_faiss_index()
 def predict(text, image):
     start_time = time.time()
 
-    # Get embeddings
+    # Encode input text
     text_inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(device)
     text_emb = model.get_text_features(**text_inputs).cpu().detach().numpy()
 
+    # Encode input image
     image_inputs = processor(images=image, return_tensors="pt").to(device)
     image_emb = model.get_image_features(**image_inputs).cpu().detach().numpy()
 
-    # Similarity between text & image
-    sim = cosine_similarity(text_emb, image_emb)[0][0]
+    # Similarity between text & image (cosine similarity)
+    sim = cos_sim(torch.tensor(text_emb), torch.tensor(image_emb)).item()
 
-    # Retrieval from KB (text only for now)
+    # Retrieve top-3 evidence from KB
     D, I = index.search(text_emb.astype("float32"), k=3)
     evidence = [kb_meta[i] for i in I[0]]
 
@@ -102,9 +103,10 @@ def predict(text, image):
     label = "Real" if sim > 0.5 else "Fake"
 
     end_time = time.time()
-    infer_time = end_time - start_time
+    infer_time = round(end_time - start_time, 3)
 
-    return label, sim, infer_time, evidence
+    return label, round(sim, 3), infer_time, evidence
+
 
 
 # ---------------------------
