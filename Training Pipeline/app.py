@@ -7,6 +7,7 @@ import streamlit as st
 from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
+from sklearn.metrics.pairwise import cosine_similarity
 
 # -----------------------
 # Paths & device
@@ -112,82 +113,37 @@ index, kb_items = build_kb_index(KB_DIR)
 # -----------------------
 # Predict function
 # -----------------------
-def predict_pair(text: str, image: Image.Image, alpha: float = 0.6, temperature: float = 0.07, top_k: int = 5, threshold: float = 0.55):
-    """
-    Returns a dict containing:
-      - label ('Real'/'Fake')
-      - pair_cos (image-text cosine in [-1,1])
-      - pair_prob (mapped to [0,1])
-      - kb_top_sim (cosine)
-      - kb_top_prob (softmax probability)
-      - blended_confidence (alpha*pair_prob + (1-alpha)*kb_top_prob)
-      - infer_time
-      - evidence: list of top-k evidence with caption, image_path, cosine, prob
-    """
-    t0 = time.time()
+def predict(text, image):
+    start_time = time.time()
 
-    # encode text
+    # Encode text
     text_inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(device)
     with torch.no_grad():
-        text_feat = model.get_text_features(**text_inputs)  # torch tensor (1, d)
+        text_emb = model.get_text_features(**text_inputs)
+    text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)   # normalize
+    text_emb = text_emb.cpu().numpy()
 
-    # encode image
+    # Encode image
     image_inputs = processor(images=image, return_tensors="pt").to(device)
     with torch.no_grad():
-        img_feat = model.get_image_features(**image_inputs)   # torch tensor (1, d)
+        image_emb = model.get_image_features(**image_inputs)
+    image_emb = image_emb / image_emb.norm(dim=-1, keepdim=True)   # normalize
+    image_emb = image_emb.cpu().numpy()
 
-    # compute direct pair cosine (torch)
-    text_unit = torch.nn.functional.normalize(text_feat, p=2, dim=1)
-    img_unit = torch.nn.functional.normalize(img_feat, p=2, dim=1)
-    pair_cos = float((text_unit * img_unit).sum(dim=1).cpu().item())  # in [-1,1]
-    pair_prob = (pair_cos + 1.0) / 2.0   # map to [0,1]
+    # Cosine similarity
+    sim_text_img = cosine_similarity(text_emb, image_emb)[0][0]
 
-    # fused query embedding for KB retrieval
-    text_np = text_feat.cpu().numpy().astype("float32")
-    img_np = img_feat.cpu().numpy().astype("float32")
-    fused_q = (l2_normalize_rows(text_np) + l2_normalize_rows(img_np)) / 2.0
-    fused_q = l2_normalize_rows(fused_q).astype("float32")  # shape (1,d)
+    # Retrieve top-3 evidence (based on caption similarity to text)
+    D, I = index.search(text_emb.astype("float32"), k=3)
+    evidence = [kb_meta[i] for i in I[0]]
 
-    kb_evidence = []
-    kb_top_sim = 0.0
-    kb_top_prob = 0.0
-    if index is not None and index.ntotal > 0:
-        k = min(top_k, index.ntotal)
-        sims, ids = index.search(fused_q, k)   # sims shape (1,k)
-        sims = sims[0]   # (k,)
-        ids = ids[0].tolist()
-        probs = softmax_1d(sims, temperature=temperature)   # softmax to get prob mass
-        kb_top_sim = float(sims[0])
-        kb_top_prob = float(probs[0])
-        for rank, idx in enumerate(ids):
-            item = kb_items[idx]
-            kb_evidence.append({
-                "rank": rank + 1,
-                "caption": item["caption"],
-                "image_path": item["image_path"],
-                "gt": item.get("gt"),
-                "cosine": float(sims[rank]),
-                "prob": float(probs[rank])
-            })
-    else:
-        # empty KB fallback: no evidence
-        kb_evidence = []
+    # Dynamic threshold for Real vs Fake
+    label = "Real" if sim_text_img >= 0.28 else "Fake"
 
-    # blended confidence: alpha * pair + (1-alpha) * kb_top_prob
-    blended = alpha * pair_prob + (1.0 - alpha) * kb_top_prob
-    label = "Real" if blended >= threshold else "Fake"
-    infer_time = time.time() - t0
+    end_time = time.time()
+    infer_time = round(end_time - start_time, 3)
 
-    return {
-        "label": label,
-        "pair_cos": pair_cos,
-        "pair_prob": pair_prob,
-        "kb_top_sim": kb_top_sim,
-        "kb_top_prob": kb_top_prob,
-        "confidence": blended,
-        "infer_time": infer_time,
-        "evidence": kb_evidence
-    }
+    return label, round(sim_text_img, 3), infer_time, evidence
 
 # -----------------------
 # Streamlit UI
