@@ -16,11 +16,17 @@ def load_model():
 model, processor = load_model()
 
 def predict_similarity(text, image):
-    inputs = processor(text=[text], images=[image], return_tensors="pt", padding=True)
+    # Add a "negative" candidate
+    candidate_texts = [text, "This description does not match the image"]
+
+    inputs = processor(text=candidate_texts, images=image, return_tensors="pt", padding=True)
     outputs = model(**inputs)
-    logits_per_image = outputs.logits_per_image
-    probs = logits_per_image.softmax(dim=1)
-    similarity_score = probs[0][0].item()
+
+
+    logits_per_image = outputs.logits_per_image  
+    probs = logits_per_image.softmax(dim=1)     
+
+    similarity_score = probs[0][0].item()  
     return similarity_score
 
 with st.form("input_form"):
