@@ -82,31 +82,50 @@ index, kb_meta = build_faiss_index()
 # ---------------------------
 # Prediction
 # ---------------------------
-def predict(text, image):
+def predict(text, image, threshold=0.28):
+    """
+    Predict whether an image-text pair is Real or Fake using CLIP + FAISS.
+    Also retrieves relevant evidence from the knowledge base.
+    """
     start_time = time.time()
 
-    # Encode input text
+    # -----------------------
+    # Encode text
+    # -----------------------
     text_inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(device)
     text_emb = model.get_text_features(**text_inputs).cpu().detach().numpy()
+    text_emb = text_emb / np.linalg.norm(text_emb, axis=1, keepdims=True)
 
-    # Encode input image
+    # -----------------------
+    # Encode image
+    # -----------------------
     image_inputs = processor(images=image, return_tensors="pt").to(device)
     image_emb = model.get_image_features(**image_inputs).cpu().detach().numpy()
+    image_emb = image_emb / np.linalg.norm(image_emb, axis=1, keepdims=True)
 
-    # Similarity between text & image (cosine similarity)
-    sim = cos_sim(torch.tensor(text_emb), torch.tensor(image_emb)).item()
+    # -----------------------
+    # Image-Text Alignment Score
+    # -----------------------
+    sim_text_img = cosine_similarity(text_emb, image_emb)[0][0]
 
-    # Retrieve top-3 evidence from KB
-    D, I = index.search(text_emb.astype("float32"), k=3)
+    # Classification
+    label = "Real" if sim_text_img >= threshold else "Fake"
+
+    # -----------------------
+    # Evidence Retrieval (optional)
+    # -----------------------
+    # Search KB with combined embedding (average of text+image)
+    query_emb = (text_emb + image_emb) / 2
+    D, I = index.search(query_emb.astype("float32"), k=3)
     evidence = [kb_meta[i] for i in I[0]]
 
-    # Label decision (threshold tuned)
-    label = "Real" if sim > 0.75 else "Fake"
-
+    # -----------------------
+    # Return
+    # -----------------------
     end_time = time.time()
     infer_time = round(end_time - start_time, 3)
 
-    return label, round(sim, 3), infer_time, evidence
+    return label, round(float(sim_text_img), 3), infer_time, evidence
 
 # ---------------------------
 # Streamlit UI
