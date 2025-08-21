@@ -44,8 +44,7 @@ def build_faiss_index():
         if not os.path.exists(img_path) or not os.path.exists(cap_path):
             continue
 
-        # Load KB data
-        image = Image.open(img_path).convert("RGB")
+        # Load caption
         with open(cap_path, "r") as f:
             caption = f.read().strip()
         gt_label = None
@@ -53,10 +52,10 @@ def build_faiss_index():
             with open(gt_path, "r") as f:
                 gt_label = f.read().strip()
 
-        # Encode with CLIP
-        inputs = processor(text=[caption], images=image, return_tensors="pt", padding=True)
+        # ✅ Only encode text (not images)
+        text_inputs = processor(text=[caption], return_tensors="pt", padding=True)
         with torch.no_grad():
-            emb = model.get_text_features(**inputs).cpu().numpy()
+            emb = model.get_text_features(**text_inputs).cpu().numpy()
         
         kb_embeddings.append(emb[0])
         kb_meta.append({
