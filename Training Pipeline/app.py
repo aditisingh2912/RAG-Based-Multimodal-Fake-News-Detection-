@@ -12,6 +12,8 @@ from transformers import CLIPProcessor, CLIPModel
 # ---------------------------
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))   # go one level up from Training_pipeline/
 KB_DIR = os.path.join(ROOT_DIR, "knowledge_base")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_NAME = "openai/clip-vit-large-patch14"
 
 # ---------------------------
 # Load CLIP model
