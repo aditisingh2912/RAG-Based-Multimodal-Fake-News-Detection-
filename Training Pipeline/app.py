@@ -6,9 +6,10 @@ import streamlit as st
 from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
+from sentence_transformers.util import cos_sim   # ✅ Added
 
 # ---------------------------
-# Path Handling (important!)
+# Path Handling
 # ---------------------------
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))   # go one level up from Training_pipeline/
 KB_DIR = os.path.join(ROOT_DIR, "knowledge_base")
@@ -20,8 +21,8 @@ MODEL_NAME = "openai/clip-vit-large-patch14"
 # ---------------------------
 @st.cache_resource
 def load_model():
-    model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-    processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+    model = CLIPModel.from_pretrained(MODEL_NAME).to(device)
+    processor = CLIPProcessor.from_pretrained(MODEL_NAME)
     return model, processor
 
 model, processor = load_model()
@@ -55,7 +56,7 @@ def build_faiss_index():
                 gt_label = f.read().strip()
 
         # ✅ Only encode text (not images)
-        text_inputs = processor(text=[caption], return_tensors="pt", padding=True)
+        text_inputs = processor(text=[caption], return_tensors="pt", padding=True).to(device)
         with torch.no_grad():
             emb = model.get_text_features(**text_inputs).cpu().numpy()
         
@@ -99,15 +100,13 @@ def predict(text, image):
     D, I = index.search(text_emb.astype("float32"), k=3)
     evidence = [kb_meta[i] for i in I[0]]
 
-    # Label decision
-    label = "Real" if sim > 0.5 else "Fake"
+    # Label decision (threshold tuned)
+    label = "Real" if sim > 0.75 else "Fake"
 
     end_time = time.time()
     infer_time = round(end_time - start_time, 3)
 
     return label, round(sim, 3), infer_time, evidence
-
-
 
 # ---------------------------
 # Streamlit UI
@@ -131,12 +130,16 @@ if submit_btn:
 
         st.metric("Prediction", label, f"{score:.2f}")
         st.write(f"⏱ Inference Time: {infer_time:.2f} sec")
-        st.write(f"🔎 Evidence: {evidence['caption']}")
-        if evidence["image_path"] and os.path.exists(evidence["image_path"]):
-            st.image(evidence["image_path"], caption="Retrieved Evidence", use_column_width=True)
-        if evidence["gt"]:
-            st.info(f"Ground Truth: {evidence['gt']}")
+
+        st.subheader("🔎 Retrieved Evidence")
+        for ev in evidence:
+            st.write(f"**Caption:** {ev['caption']}")
+            if ev["image_path"] and os.path.exists(ev["image_path"]):
+                st.image(ev["image_path"], caption="Evidence Image", use_column_width=True)
+            if ev["gt"]:
+                st.info(f"Ground Truth: {ev['gt']}")
 
 st.caption("⚡ Powered by Aditi Singh | Built for Streamlit Cloud")
+
 
 
